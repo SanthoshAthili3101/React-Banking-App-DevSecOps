@@ -8,7 +8,7 @@ on:
   # Allows you to run this manually from the Actions tab for debugging
   workflow_dispatch:
 
-# Concurrency
+# Concurrency (it will delete the exisiting pipeline runs if a new one is triggered)
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -22,6 +22,8 @@ env:
 # Permissions
 permissions:
   contents: read
+
+# Jobs
 jobs:
   build-secure-deploy:
     name: Build, Secure, Optimize and Deploy React App to AWS ECS
@@ -55,9 +57,8 @@ jobs:
       with:
         context: .
         file: Dockerfile
-        load: true  #  keep image local (dont push yet) so we can scan it 
-        tags: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
-        # this caches your layers in Github Actions
+        load: true  #  keep image local (dont push yet) so we can scan it # this caches your layers in Github Actions
+        tags: fat-image:latest
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
@@ -65,7 +66,7 @@ jobs:
     - name: Run Trivy vulnerability scan
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+        image-ref: fat-image:latest
         format: 'table'
         exit-code: '1'
         severity: 'CRITICAL,HIGH'
@@ -79,8 +80,8 @@ jobs:
         docker run --rm \
           -v /var/run/docker.sock:/var/run/docker.sock \
           dslim/slim build \
-          --target ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:fat-${{ env.IMAGE_TAG }} \
-          --tag ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }} \
+          --target fat-image:latest \
+          --tag slim-image:latest \
           --http-probe=false \
           --include-path /usr/share/nginx/html 
 
@@ -89,11 +90,16 @@ jobs:
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
       run: |
-        # Push the specific SHA tag (Optimized)
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.IMAGE_TAG }}
+        echo "Retagging local slim image for ECR..."
+          
+        # 1. Tag 'slim-image' with the ECR Format + SHA
+        docker tag slim-image:latest $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.IMAGE_TAG }}
         
-        # Tag and push 'latest' (Optimized)
-        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.IMAGE_TAG }} $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        # 2. Tag 'slim-image' with ECR Format + latest
+        docker tag slim-image:latest $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        
+        # 3. Push
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.IMAGE_TAG }}
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
         
         echo "::notice::🚀 Deployed Optimized Image: $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.IMAGE_TAG }}"
