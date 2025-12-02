@@ -16,7 +16,7 @@ concurrency:
 # Global environment variables
 env:
   aws_region: ap-south-1
-  ecr_repository:  react-banking-app
+  ECR_REPOSITORY:  react-banking-app
   image_tag: ${{ github.sha }}
 
 # Permissions
@@ -56,7 +56,7 @@ jobs:
         context: .
         file: Dockerfile
         load: true  #  keep image local (dont push yet) so we can scan it 
-        tags: ${{ steps.login-ecr.outputs.registry }}/${{ env.ecr_repository }}:${{ env.image_tag }}
+        tags: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.image_tag }}
         # this caches your layers in Github Actions
         cache-from: type=gha
         cache-to: type=gha,mode=max
@@ -65,12 +65,12 @@ jobs:
     - name: Run Trivy vulnerability scan
       uses: aquasecurity/trivy-action@master
       with:
-       image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ env.ecr_repository }}:${{ env.image_tag }}
-       format: 'table'
-       exit-code: '1'
-       severity: 'CRITICAL,HIGH'
-       ignore-unfixed: true
-       vuln-type: 'os,library'
+        image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.image_tag }}
+        format: 'table'
+        exit-code: '1'
+        severity: 'CRITICAL,HIGH'
+        ignore-unfixed: true
+        vuln-type: 'os,library'
 
     #stage 7: OPTIMIZATION PHASE (Using Docker Slim)
     - name: Minify Image using SlimtoolKit
