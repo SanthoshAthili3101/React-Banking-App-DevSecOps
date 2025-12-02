@@ -111,7 +111,7 @@ jobs:
     # Start container to DAST
     - name: Start Application Container
       run: |
-        docker run -d -p 8080:80 --name dast-container slim-image:latest
+        docker run -d -p 8080:8080 --name dast-container slim-image:latest
 
     - name: Wait for App to be Ready
       # FIX: Loop until the app responds (Health Check)
