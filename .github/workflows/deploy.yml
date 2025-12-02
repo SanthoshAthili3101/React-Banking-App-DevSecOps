@@ -40,10 +40,9 @@ jobs:
     # Stage 2: Secret Scanning (TruffleHog)
     # Checks git history for leaked AWS keys, tokens, etc.
     - name: Secret Scanning with TruffleHog
-      uses: trufflesecurity/trufflehog-action@v3
+      uses: trufflesecurity/trufflehog@v3.90.2
       with:
         extra_args: --only-verified
-        exit_code: '1'  # Fail the job if secrets are found
 
     # Stage 3: SAST( STATIC APPLICATION SECURTY TESTING - Semgrep)  
     # Scans your rect code for vulnerabilities
