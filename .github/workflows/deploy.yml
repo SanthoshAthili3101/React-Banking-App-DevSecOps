@@ -92,10 +92,10 @@ jobs:
           --target fat-image:latest \
           --tag slim-image:latest \
           --http-probe=false \
+          --include-path /opt/bitnami \
           --include-path /usr/share/nginx/html \
-          --include-path /opt/bitnami/scripts \
-          --include-path /opt/bitnami/nginx \
-          --include-path /usr/lib/libreadline.so.8 \
+          --include-path /usr/lib \
+          --include-path /lib \
           --include-path /lib64 \
           --include-bin /bin/bash \
           --include-bin /usr/bin/date \
@@ -103,7 +103,8 @@ jobs:
           --include-bin /usr/bin/mkdir \
           --include-bin /usr/bin/cat \
           --include-bin /usr/bin/grep \
-          --include-bin /usr/bin/sed
+          --include-bin /usr/bin/sed \
+          --include-bin /usr/bin/awk
 
     #stage x: DAST (Dynamic Application Security Testing - OWASP ZAP)
 
