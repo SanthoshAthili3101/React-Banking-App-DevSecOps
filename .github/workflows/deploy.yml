@@ -17,7 +17,7 @@ concurrency:
 env:
   aws_region: ap-south-1
   ecr_repository:  react-banking-app
-  image_tag: {{ github.sha }}
+  image_tag: ${{ github.sha }}
 
 # Permissions
 permissions:
