@@ -72,7 +72,7 @@ jobs:
         ignore-unfixed: true
         vuln-type: 'os,library'
 
-    #stage 7: OPTIMIZATION PHASE (Using Docker Slim)
+    #stage 7: OPTIMIZATION PHASE (Using Docker Slim)/
     - name: Minify Image using SlimtoolKit
       uses: kitabisa/docker-slim-action@v2
       env:
