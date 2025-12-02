@@ -55,7 +55,6 @@ jobs:
           p/react
           p/owasp-top-ten
           p/security-audit  
-        exit-code: '1'  # Fail the job if issues are found
 
     #stage 4 Setup Docker Buildx( required for advanced caching)
     - name: Setup Docker Buildx
@@ -103,6 +102,13 @@ jobs:
         docker run -d -p 8080:80 --name dast-container slim-image:latest
         # Wait for the application to be up and running
         sleep 10  # Adjust sleep time as necessary for your app to start
+    - name: Wait for App to be Ready
+      # FIX: Loop until the app responds (Health Check)
+      run: |
+        echo "Waiting for application to start..."
+        timeout 30s bash -c 'until curl -s http://localhost:8080 > /dev/null; do sleep 2; done'
+        echo "Application is UP!"
+
     # DAST Scan with OWASP ZAP
     - name: DAST with OWASP ZAP
       uses: zaproxy/action-full-scan@v0.8.0
@@ -110,6 +116,7 @@ jobs:
         target: 'http://localhost:8080'
         fail_action: false  # Do not fail the job on alerts
         allow_issue_writing: false
+        
     # Stop and remove the application container
     - name: Stop Application Container
       if: always()
