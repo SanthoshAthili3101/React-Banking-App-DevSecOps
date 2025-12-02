@@ -1,0 +1,97 @@
+name: React App Deployment
+
+# Triggers
+on:
+  push:
+    branches: [main]
+
+  # Allows you to run this manually from the Actions tab for debugging
+  workflow_dispatch:
+
+# Concurrency
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Global environment variables
+env:
+  aws_region: ap-south-1
+  ecr_repository:  react-banking-app
+  image_tag: {{ github.sha }}
+
+# Permissions
+permissions:
+  contents: read
+jobs:
+  build-secure-deploy:
+    name: Build, Secure, Optimize and Deploy React App to AWS ECS
+    runs-on: ubuntu-latest
+
+    steps:
+    #stage 1: Checkout Code
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    #stage 2: Setup Docker Buildx( required for advanced caching)
+    - name: Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    #stage 3: Configure AWS Credentials
+    - name: Login to AWS ECR
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.aws_region }}
+
+    #stage 4: Login to Amazon ECR
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    #stage 5: Build Phase (With caching)
+    - name: Build Fat Image 
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: Dockerfile
+        load: true  #  keep image local (dont push yet) so we can scan it 
+        tags: ${{ steps.login-ecr.outputs.registry }}/${{ env.ecr_repository }}:${{ env.image_tag }}
+        # this caches your layers in Github Actions
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    #stage 6: Scan Phase (Security Scanning using Trivy)
+    - name: Run Trivy vulnerability scan
+      uses: aquasecurity/trivy-action@master
+      with:
+       image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ env.ecr_repository }}:${{ env.image_tag }}
+       format: 'table'
+       exit-code: '1'
+       severity: 'CRITICAL,HIGH'
+       ignore-unfixed: true
+       vuln-type: 'os,library'
+
+    #stage 7: OPTIMIZATION PHASE (Using Docker Slim)
+    - name: Minify Image using SlimtoolKit
+      uses: kitabisa/docker-slim-action@v2
+      env:
+        DSLIM_HTTP_PROBE: false
+      with:
+        target: '${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:fat-${{ env.IMAGE_TAG }}'
+        tag: ${{ env.IMAGE_TAG }}
+        include_path: '/usr/share/nginx/html' # Whitelist Frontend assets
+
+    #stage 8: Push Phase
+    - name: Push Optimized Image to ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+      run: |
+        # Push the specific SHA tag (Optimized)
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.IMAGE_TAG }}
+        
+        # Tag and push 'latest' (Optimized)
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.IMAGE_TAG }} $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        
+        echo "::notice::🚀 Deployed Optimized Image: $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.IMAGE_TAG }}"
