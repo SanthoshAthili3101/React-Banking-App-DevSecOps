@@ -69,14 +69,14 @@ jobs:
           p/react
           p/owasp-top-ten
           p/security-audit
-        generatSarif: 'semgrep-report.sarif'  
+        generatSarif: "semgrep.sarif"  
     
     # Upload Semgrep results to GitHub Security Tab
     - name: Upload Semgrep Report
       uses: github/codeql-action/upload-sarif@v3
       if: always() 
       with:
-        sarif_file: 'semgrep-report.sarif'
+        sarif_file: semgrep.sarif
         category: semgrep
 
     # Stage 4: IaC Scanning (Trivy)      
@@ -87,7 +87,7 @@ jobs:
         scan-type: 'config'        
         scan-ref: '.'             
         format: 'sarif'
-        output: 'trivy-iac-report.sarif'
+        output: 'trivy-iac.sarif'
         exit-code: '1'            
         severity: 'CRITICAL,HIGH'
         ignore-unfixed: true
@@ -96,7 +96,7 @@ jobs:
       uses: github/codeql-action/upload-sarif@v3
       if: always()
       with:
-        sarif_file: 'trivy-iac-report.sarif'
+        sarif_file: 'trivy-iac.sarif'
         category: trivy-iac
 
     #stage 4 Setup Docker Buildx(required for advanced caching)
@@ -123,7 +123,7 @@ jobs:
       with:
         image-ref: fat-image:latest
         format: 'sarif'
-        output: 'trivy-image-report.sarif'
+        output: 'trivy-image.sarif'
         exit-code: '1'
         severity: 'CRITICAL,HIGH'
         ignore-unfixed: true
@@ -133,7 +133,7 @@ jobs:
       uses: github/codeql-action/upload-sarif@v3
       if: always()
       with:
-        sarif_file: 'trivy-image-report.sarif'
+        sarif_file: 'trivy-image.sarif'
         category: trivy-image
 
     # Stage 7: OPTIMIZATION PHASE (Using Docker Slim)
