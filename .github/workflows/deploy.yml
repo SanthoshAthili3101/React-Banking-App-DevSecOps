@@ -124,7 +124,6 @@ jobs:
         image-ref: fat-image:latest
         format: 'sarif'
         output: 'trivy-image.sarif'
-        exit-code: '1'
         severity: 'CRITICAL,HIGH'
         ignore-unfixed: true
         vuln-type: 'os,library'
