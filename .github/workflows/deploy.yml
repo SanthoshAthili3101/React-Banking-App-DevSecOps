@@ -100,8 +100,10 @@ jobs:
           --include-path /usr/share/nginx/html \
           --include-path /etc/nginx \
           --include-path /var/cache/nginx \
+          --include-path /var/log/nginx \
           --include-path /var/run \
-          --include-path /usr/lib/nginx/modules \
+          --include-path /etc/passwd \
+          --include-path /etc/group \
           --include-bin /usr/sbin/nginx
 
     #stage x: DAST (Dynamic Application Security Testing - OWASP ZAP)
