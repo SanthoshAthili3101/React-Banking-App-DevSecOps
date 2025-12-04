@@ -27,6 +27,7 @@ env:
 permissions:
   contents: read
   security-events: write # For uploading scan results to GitHub 
+#Just add permissions for aws user
 
 # Jobs
 jobs:
