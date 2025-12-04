@@ -70,7 +70,7 @@ jobs:
           p/owasp-top-ten
           p/security-audit
         generateSarif: true
-        sarif: semgrep.sarif  
+        sarif: ${{ github.workspace }}/semgrep.sarif
     
     # Upload Semgrep results to GitHub Security Tab
     - name: Upload Semgrep Report
