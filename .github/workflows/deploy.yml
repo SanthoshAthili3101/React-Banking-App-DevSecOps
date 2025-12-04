@@ -50,20 +50,14 @@ jobs:
       continue-on-error: true
       id: trufflehog
       with:
-        extra_args: --only-verified --json
+        extra_args: --only-verified --sarif
 
-    - name: Convert TruffleHog JSON to SARIF
-      uses: simon-k/trufflehog-sarif@v1
-      if: always()
-      with:
-        input-file: 'trufflehog.json' # The action above writes to this by default or stdout
-        output-file: 'trufflehog.sarif'
 
     - name: Upload TruffleHog Results to GitHub Security
       uses: github/codeql-action/upload-sarif@v3
       if: always()
       with:
-        sarif_file: 'trufflehog.sarif'
+        sarif_file: ${{ steps.trufflehog.outputs.sarif }} # The output variable from the TruffleHog action
         category: trufflehog
 
     # Stage 3: SAST(STATIC APPLICATION SECURTY TESTING - Semgrep)  
