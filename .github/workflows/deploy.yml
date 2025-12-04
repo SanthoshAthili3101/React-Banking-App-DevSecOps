@@ -45,54 +45,88 @@ jobs:
     
     # Stage 2: Secret Scanning (TruffleHog)
     # Checks git history for leaked AWS keys, tokens, etc.
+      
+    # Stage 2: Secret Scanning (TruffleHog) - produce SARIF and upload to Code Scanning
     - name: Secret Scanning with TruffleHog
       uses: trufflesecurity/trufflehog@v3.90.2
+      id: trufflehog
       with:
+        # Request SARIF output
+        format: sarif
+        # Write SARIF explicitly to the workspace
+        output: ${{ github.workspace }}/trufflehog.sarif
+        # Preserve your existing arg
         extra_args: --only-verified
 
-    # Stage 3: SAST(STATIC APPLICATION SECURTY TESTING - Semgrep)  
-    # Scans your rect code for vulnerabilities
-
-    - name: Install Semgrep CLI
-      run: |
-        python -m pip install --upgrade pip
-        pip install semgrep==1.36.0
-      
-    - name: Run Semgrep CLI (generate SARIF)
-      run: |
-        echo "Running semgrep and writing SARIF to $GITHUB_WORKSPACE/semgrep.sarif"
-        semgrep \
-          --config p/javascript \
-          --config p/typescript \
-          --config p/react \
-          --config p/owasp-top-ten \
-          --config p/security-audit \
-          --sarif "${{ github.workspace }}/semgrep.sarif" || true
-
-    # Verify file exists and show top lines for debug
-    - name: Verify semgrep.sarif
+    # Verify trufflehog.sarif exists and show a preview for debug
+    - name: Verify trufflehog.sarif
       if: always()
-      id: check_semgrep
+      id: check_trufflehog
       run: |
         echo "Workspace: $GITHUB_WORKSPACE"
         ls -la "${{ github.workspace }}" || true
-        if [ -f "${{ github.workspace }}/semgrep.sarif" ]; then
-          echo "semgrep.sarif FOUND: size=$(stat -c%s "${{ github.workspace }}/semgrep.sarif") bytes"
+        if [ -f "${{ github.workspace }}/trufflehog.sarif" ]; then
+          echo "trufflehog.sarif FOUND: size=$(stat -c%s "${{ github.workspace }}/trufflehog.sarif") bytes"
           echo "First 100 lines:"
-          head -n 100 "${{ github.workspace }}/semgrep.sarif" || true
+          head -n 100 "${{ github.workspace }}/trufflehog.sarif" || true
           echo "exists=true" >> $GITHUB_OUTPUT
         else
-          echo "semgrep.sarif NOT FOUND"
+          echo "trufflehog.sarif NOT FOUND"
           echo "exists=false" >> $GITHUB_OUTPUT
         fi
 
-    # Upload to GitHub Code Scanning only if SARIF exists
-    - name: Upload Semgrep SARIF to Code Scanning
-      if: steps.check_semgrep.outputs.exists == 'true'
+    # Upload TruffleHog SARIF to GitHub Code Scanning (only when present)
+    - name: Upload TruffleHog SARIF
+      if: steps.check_trufflehog.outputs.exists == 'true'
       uses: github/codeql-action/upload-sarif@v4
       with:
-        sarif_file: ${{ github.workspace }}/semgrep.sarif
-        category: semgrep
+        sarif_file: ${{ github.workspace }}/trufflehog.sarif
+        category: trufflehog
+
+
+    # # Stage 3: SAST(STATIC APPLICATION SECURTY TESTING - Semgrep)  
+    # # Scans your rect code for vulnerabilities
+
+    # - name: Install Semgrep CLI
+    #   run: |
+    #     python -m pip install --upgrade pip
+    #     pip install semgrep==1.36.0
+      
+    # - name: Run Semgrep CLI (generate SARIF)
+    #   run: |
+    #     echo "Running semgrep and writing SARIF to $GITHUB_WORKSPACE/semgrep.sarif"
+    #     semgrep \
+    #       --config p/javascript \
+    #       --config p/typescript \
+    #       --config p/react \
+    #       --config p/owasp-top-ten \
+    #       --config p/security-audit \
+    #       --sarif "${{ github.workspace }}/semgrep.sarif" || true
+
+    # # Verify file exists and show top lines for debug
+    # - name: Verify semgrep.sarif
+    #   if: always()
+    #   id: check_semgrep
+    #   run: |
+    #     echo "Workspace: $GITHUB_WORKSPACE"
+    #     ls -la "${{ github.workspace }}" || true
+    #     if [ -f "${{ github.workspace }}/semgrep.sarif" ]; then
+    #       echo "semgrep.sarif FOUND: size=$(stat -c%s "${{ github.workspace }}/semgrep.sarif") bytes"
+    #       echo "First 100 lines:"
+    #       head -n 100 "${{ github.workspace }}/semgrep.sarif" || true
+    #       echo "exists=true" >> $GITHUB_OUTPUT
+    #     else
+    #       echo "semgrep.sarif NOT FOUND"
+    #       echo "exists=false" >> $GITHUB_OUTPUT
+    #     fi
+
+    # # Upload to GitHub Code Scanning only if SARIF exists
+    # - name: Upload Semgrep SARIF to Code Scanning
+    #   if: steps.check_semgrep.outputs.exists == 'true'
+    #   uses: github/codeql-action/upload-sarif@v4
+    #   with:
+    #     sarif_file: ${{ github.workspace }}/semgrep.sarif
+    #     category: semgrep
 
  
 
