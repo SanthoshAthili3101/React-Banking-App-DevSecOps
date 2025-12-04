@@ -52,36 +52,39 @@ jobs:
 
     # Stage 3: SAST(STATIC APPLICATION SECURTY TESTING - Semgrep)  
     # Scans your rect code for vulnerabilities
-    - name: SAST with Semgrep
-      uses: returntocorp/semgrep-action@v1
-      with:
-        # MUST be a YAML list (each pack must begin with '-')
-        config: |
-          - p/javascript
-          - p/typescript
-          - p/react
-          - p/owasp-top-ten
-          - p/security-audit
-        generateSarif: true
-        # Write SARIF explicitly to the workspace
-        sarif: ${{ github.workspace }}/semgrep.sarif
+
+    - name: Install Semgrep CLI
+      run: |
+        python -m pip install --upgrade pip
+        pip install semgrep==1.36.0
+      
+    - name: Run Semgrep CLI (generate SARIF)
+      run: |
+        echo "Running semgrep and writing SARIF to $GITHUB_WORKSPACE/semgrep.sarif"
+        semgrep \
+          --config p/javascript \
+          --config p/typescript \
+          --config p/react \
+          --config p/owasp-top-ten \
+          --config p/security-audit \
+          --sarif "${{ github.workspace }}/semgrep.sarif" || true
+
+    # Verify file exists and show top lines for debug
     - name: Verify semgrep.sarif
       if: always()
+      id: check_semgrep
       run: |
-        echo "Working dir: $PWD"
         echo "Workspace: $GITHUB_WORKSPACE"
         ls -la "${{ github.workspace }}" || true
         if [ -f "${{ github.workspace }}/semgrep.sarif" ]; then
-          echo "semgrep.sarif FOUND"
-          echo "Size: $(stat -c%s "${{ github.workspace }}/semgrep.sarif") bytes"
-          echo "First 60 lines:"
-          head -n 60 "${{ github.workspace }}/semgrep.sarif" || true
+          echo "semgrep.sarif FOUND: size=$(stat -c%s "${{ github.workspace }}/semgrep.sarif") bytes"
+          echo "First 100 lines:"
+          head -n 100 "${{ github.workspace }}/semgrep.sarif" || true
           echo "exists=true" >> $GITHUB_OUTPUT
         else
           echo "semgrep.sarif NOT FOUND"
           echo "exists=false" >> $GITHUB_OUTPUT
         fi
-      id: check_semgrep
 
     # Upload to GitHub Code Scanning only if SARIF exists
     - name: Upload Semgrep SARIF to Code Scanning
@@ -90,6 +93,7 @@ jobs:
       with:
         sarif_file: ${{ github.workspace }}/semgrep.sarif
         category: semgrep
+
  
 
     # # Stage 4: IaC Scanning (Trivy)      
