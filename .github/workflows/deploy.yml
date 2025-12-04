@@ -97,32 +97,26 @@ jobs:
           --target fat-image:latest \
           --tag slim-image:latest \
           --http-probe=false \
-          --include-path /opt/bitnami \
           --include-path /usr/share/nginx/html \
-          --include-path /usr/lib \
-          --include-path /lib \
-          --include-path /lib64 \
-          --include-bin /bin/bash \
-          --include-bin /usr/bin/date \
-          --include-bin /usr/bin/cp \
-          --include-bin /usr/bin/mkdir \
-          --include-bin /usr/bin/cat \
-          --include-bin /usr/bin/grep \
-          --include-bin /usr/bin/sed \
-          --include-bin /usr/bin/awk
+          --include-path /etc/nginx \
+          --include-path /var/cache/nginx \
+          --include-path /var/run \
+          --include-path /usr/lib/nginx/modules \
+          --include-bin /usr/sbin/nginx
 
     #stage x: DAST (Dynamic Application Security Testing - OWASP ZAP)
 
     # Start container to DAST
     - name: Start Application Container
       run: |
+        # MAP PORT 8080 (Host) -> 80 (Container)
         docker run -d -p 8080:8080 --name dast-container slim-image:latest
 
     - name: Wait for App to be Ready
-      # FIX: Loop until the app responds (Health Check)
       run: |
         echo "Waiting for application to start..."
-        timeout 200s bash -c 'until curl -s http://localhost:8080 > /dev/null; do sleep 2; done'
+        # 60s timeout is plenty for Alpine
+        timeout 60s bash -c 'until curl -s http://localhost:8080 > /dev/null; do sleep 2; done'
         echo "Application is UP!"
     - name: Debug Container Logs (On Failure)
       if: failure() # Only runs if the previous step failed
