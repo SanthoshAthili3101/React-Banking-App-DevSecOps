@@ -18,6 +18,10 @@ env:
   aws_region: ap-south-1
   ECR_REPOSITORY:  react-banking-app
   IMAGE_TAG: ${{ github.sha }}
+  ECS_SERVICE: banking-app-service
+  ECS_CLUSTER: banking-cluster
+  ECS_TASK_DEFINITION: .aws/task-definition.json # We will create a dummy placeholder for this
+  CONTAINER_NAME: banking-app-container
 
 # Permissions
 permissions:
@@ -173,3 +177,29 @@ jobs:
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
         
         echo "::notice::🚀 Deployed Optimized Image: $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.IMAGE_TAG }}"
+
+    # ----------------------------------------------------------------
+    # STAGE 6: CONTINUOUS DEPLOYMENT (ECS Fargate)
+    # ----------------------------------------------------------------
+    - name: Download Task Definition
+      run: |
+        # Fetch the CURRENT Task Definition from AWS
+        aws ecs describe-task-definition --task-definition banking-app-task \
+        --query taskDefinition > task-definition.json
+
+    - name: Fill in the new image ID in the Amazon ECS task definition
+      id: task-def
+      uses: aws-actions/amazon-ecs-render-task-definition@v1
+      with:
+        task-definition: task-definition.json
+        container-name: ${{ env.CONTAINER_NAME }}
+        # Use the ECR image we just pushed
+        image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+
+    - name: Deploy Amazon ECS task definition
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      with:
+        task-definition: ${{ steps.task-def.outputs.task-definition }}
+        service: ${{ env.ECS_SERVICE }}
+        cluster: ${{ env.ECS_CLUSTER }}
+        wait-for-service-stability: true
