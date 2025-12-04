@@ -63,7 +63,7 @@ jobs:
     - name: SAST with Semgrep
       uses: returntocorp/semgrep-action@v1
       with:
-        config: >- 
+        config: |
           p/javascript
           p/typescript
           p/react
