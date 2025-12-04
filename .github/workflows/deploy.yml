@@ -47,18 +47,16 @@ jobs:
     # Checks git history for leaked AWS keys, tokens, etc.
     - name: Secret Scanning with TruffleHog
       uses: trufflesecurity/trufflehog@v3.90.2
-      continue-on-error: true
-      id: trufflehog
       with:
-        extra_args: --only-verified --sarif
+        extra_args: --only-verified
 
 
-    - name: Upload TruffleHog Results to GitHub Security
-      uses: github/codeql-action/upload-sarif@v3
-      if: always()
-      with:
-        sarif_file: ${{ steps.trufflehog.outputs.sarif }} # The output variable from the TruffleHog action
-        category: trufflehog
+    # - name: Upload TruffleHog Results to GitHub Security
+    #   uses: github/codeql-action/upload-sarif@v3
+    #   if: always()
+    #   with:
+    #     sarif_file: ${{ steps.trufflehog.outputs.sarif }} # The output variable from the TruffleHog action
+    #     category: trufflehog
 
     # Stage 3: SAST(STATIC APPLICATION SECURTY TESTING - Semgrep)  
     # Scans your rect code for vulnerabilities
