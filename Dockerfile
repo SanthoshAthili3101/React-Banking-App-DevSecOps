@@ -9,18 +9,16 @@ RUN GENERATE_SOURCEMAP=false npm run build
 # Stage 2: Serve with Alpine Nginx
 FROM nginx:alpine
 
-# --- SECURITY PATCH START ---
-# Trivy found CVE-2025-64720 in libpng. We force an upgrade here.
+# 1. Security Patch (Keep Trivy happy)
 RUN apk update && apk upgrade libpng
-# --- SECURITY PATCH END ---
 
-# Copy the build output
+# 2. Copy Build Artifacts
 COPY --from=build /app/build /usr/share/nginx/html
 
-# Configure Nginx to listen on 8080 (For Non-Root security)
+# 3. CRITICAL FIX: Change Nginx Listen Port from 80 to 8080
+# This matches your Terraform Target Group settings.
 RUN sed -i 's/listen  80;/listen 8080;/' /etc/nginx/conf.d/default.conf
-
-# Expose 8080
+# 4. Expose the new port
 EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]
