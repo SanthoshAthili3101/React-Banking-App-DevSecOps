@@ -55,7 +55,7 @@ jobs:
       uses: hashicorp/setup-terraform@v3
       with:
         terraform_version: "1.10.0"
-
+        
     - name: Terraform Plan & OPA Check
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -72,10 +72,10 @@ jobs:
         # We stay in the 'terraform' directory and reference policies in the parent (../policies)
         echo "🔍 Running OPA Policies..."
         
-        conftest test tfplan.json \
-          --policy ../policies \
-          --namespace terraform.analysis \
-          --output sarif > opa-results.sarif || true
+        opa eval --format pretty \
+          --input tfplan.json \
+          --data ../policies/ \
+          "data.terraform.analysis.deny" > opa-result.txt
         
         # 3. Check and Display Results
         if [ -s opa-result.txt ] && grep -q "ALERT" opa-result.txt; then
@@ -90,239 +90,232 @@ jobs:
         else
            echo "✅ OPA Check Passed"
         fi
-
-    - name: Upload OPA Results to GitHub Security
-      uses: github/codeql-action/upload-sarif@v3
-      if: always()
-      with:
-        sarif_file: terraform/opa-results.sarif
-        category: opa-compliance
     
-    # # Stage 2: Secret Scanning (TruffleHog)
-    # # Checks git history for leaked AWS keys, tokens, etc.
-    # - name: Secret Scanning with TruffleHog
-    #   uses: trufflesecurity/trufflehog@v3.90.2
-    #   with:
-    #     extra_args: --only-verified
+    # Stage 2: Secret Scanning (TruffleHog)
+    # Checks git history for leaked AWS keys, tokens, etc.
+    - name: Secret Scanning with TruffleHog
+      uses: trufflesecurity/trufflehog@v3.90.2
+      with:
+        extra_args: --only-verified
 
-    # # Stage 3: SAST(STATIC APPLICATION SECURTY TESTING - Semgrep)  
-    # # Scans your rect code for vulnerabilities
+    # Stage 3: SAST(STATIC APPLICATION SECURTY TESTING - Semgrep)  
+    # Scans your rect code for vulnerabilities
 
-    # - name: Install Semgrep CLI
-    #   run: |
-    #     python -m pip install --upgrade pip
-    #     pip install semgrep==1.36.0
+    - name: Install Semgrep CLI
+      run: |
+        python -m pip install --upgrade pip
+        pip install semgrep==1.36.0
       
-    # - name: Run Semgrep CLI (generate SARIF)
-    #   run: |
-    #     echo "Running semgrep and writing SARIF to $GITHUB_WORKSPACE/semgrep.sarif"
-    #     semgrep \
-    #       --config p/javascript \
-    #       --config p/typescript \
-    #       --config p/react \
-    #       --config p/owasp-top-ten \
-    #       --config p/security-audit \
-    #       --sarif "${{ github.workspace }}/semgrep.sarif" || true
+    - name: Run Semgrep CLI (generate SARIF)
+      run: |
+        echo "Running semgrep and writing SARIF to $GITHUB_WORKSPACE/semgrep.sarif"
+        semgrep \
+          --config p/javascript \
+          --config p/typescript \
+          --config p/react \
+          --config p/owasp-top-ten \
+          --config p/security-audit \
+          --sarif "${{ github.workspace }}/semgrep.sarif" || true
 
-    # # Verify file exists and show top lines for debug
-    # - name: Verify semgrep.sarif
-    #   if: always()
-    #   id: check_semgrep
-    #   run: |
-    #     echo "Workspace: $GITHUB_WORKSPACE"
-    #     ls -la "${{ github.workspace }}" || true
-    #     if [ -f "${{ github.workspace }}/semgrep.sarif" ]; then
-    #       echo "semgrep.sarif FOUND: size=$(stat -c%s "${{ github.workspace }}/semgrep.sarif") bytes"
-    #       echo "First 100 lines:"
-    #       head -n 100 "${{ github.workspace }}/semgrep.sarif" || true
-    #       echo "exists=true" >> $GITHUB_OUTPUT
-    #     else
-    #       echo "semgrep.sarif NOT FOUND"
-    #       echo "exists=false" >> $GITHUB_OUTPUT
-    #     fi
+    # Verify file exists and show top lines for debug
+    - name: Verify semgrep.sarif
+      if: always()
+      id: check_semgrep
+      run: |
+        echo "Workspace: $GITHUB_WORKSPACE"
+        ls -la "${{ github.workspace }}" || true
+        if [ -f "${{ github.workspace }}/semgrep.sarif" ]; then
+          echo "semgrep.sarif FOUND: size=$(stat -c%s "${{ github.workspace }}/semgrep.sarif") bytes"
+          echo "First 100 lines:"
+          head -n 100 "${{ github.workspace }}/semgrep.sarif" || true
+          echo "exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "semgrep.sarif NOT FOUND"
+          echo "exists=false" >> $GITHUB_OUTPUT
+        fi
 
-    # # Upload to GitHub Code Scanning only if SARIF exists
-    # - name: Upload Semgrep SARIF to Code Scanning
-    #   if: steps.check_semgrep.outputs.exists == 'true'
-    #   uses: github/codeql-action/upload-sarif@v4
-    #   with:
-    #     sarif_file: ${{ github.workspace }}/semgrep.sarif
-    #     category: semgrep
+    # Upload to GitHub Code Scanning only if SARIF exists
+    - name: Upload Semgrep SARIF to Code Scanning
+      if: steps.check_semgrep.outputs.exists == 'true'
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: ${{ github.workspace }}/semgrep.sarif
+        category: semgrep
 
  
 
-    # # Stage 4: IaC Scanning (Trivy)      
-    # # Scans your Infrastructure as Code (Terraform & Dockerfile) for misconfigurations
-    # - name: Run Trivy IaC Scan (Terraform & Dockerfile)
-    #   uses: aquasecurity/trivy-action@master
-    #   with:
-    #     scan-type: 'config'        
-    #     scan-ref: '.'             
-    #     format: 'sarif'
-    #     output: 'trivy-iac.sarif'           
-    #     severity: 'CRITICAL,HIGH'
-    #     ignore-unfixed: true
+    # Stage 4: IaC Scanning (Trivy)      
+    # Scans your Infrastructure as Code (Terraform & Dockerfile) for misconfigurations
+    - name: Run Trivy IaC Scan (Terraform & Dockerfile)
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'config'        
+        scan-ref: '.'             
+        format: 'sarif'
+        output: 'trivy-iac.sarif'           
+        severity: 'CRITICAL,HIGH'
+        ignore-unfixed: true
     
-    # - name: Upload Trivy IaC Report
-    #   uses: github/codeql-action/upload-sarif@v3
-    #   if: always()
-    #   with:
-    #     sarif_file: 'trivy-iac.sarif'
-    #     category: trivy-iac
+    - name: Upload Trivy IaC Report
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-iac.sarif'
+        category: trivy-iac
 
-    # #stage 4 Setup Docker Buildx(required for advanced caching)
-    # # Buildx is a Docker CLI plugin that extends the docker command with the full support of the features provided by Moby BuildKit builder toolkit
-    # - name: Setup Docker Buildx
-    #   uses: docker/setup-buildx-action@v3
+    #stage 4 Setup Docker Buildx(required for advanced caching)
+    # Buildx is a Docker CLI plugin that extends the docker command with the full support of the features provided by Moby BuildKit builder toolkit
+    - name: Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
 
-    # #stage 5: Build Phase (With caching)
-    # # Build the Docker image with caching to speed up subsequent builds
-    # - name: Build Fat Image 
-    #   uses: docker/build-push-action@v5
-    #   with:
-    #     context: .
-    #     file: Dockerfile
-    #     load: true  #  keep image local (dont push yet) so we can scan it # this caches your layers in Github Actions
-    #     tags: fat-image:latest
-    #     cache-from: type=gha
-    #     cache-to: type=gha,mode=max
+    #stage 5: Build Phase (With caching)
+    # Build the Docker image with caching to speed up subsequent builds
+    - name: Build Fat Image 
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: Dockerfile
+        load: true  #  keep image local (dont push yet) so we can scan it # this caches your layers in Github Actions
+        tags: fat-image:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
 
-    # #stage 6: Scan Phase (Security Scanning using Trivy)
-    # # Scans the built Docker image for vulnerabilities
-    # - name: Run Trivy vulnerability scan
-    #   uses: aquasecurity/trivy-action@master
-    #   with:
-    #     image-ref: fat-image:latest
-    #     format: 'sarif'
-    #     output: 'trivy-image.sarif'
-    #     severity: 'CRITICAL,HIGH'
-    #     ignore-unfixed: true
-    #     vuln-type: 'os,library'
+    #stage 6: Scan Phase (Security Scanning using Trivy)
+    # Scans the built Docker image for vulnerabilities
+    - name: Run Trivy vulnerability scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: fat-image:latest
+        format: 'sarif'
+        output: 'trivy-image.sarif'
+        severity: 'CRITICAL,HIGH'
+        ignore-unfixed: true
+        vuln-type: 'os,library'
 
-    # - name: Upload Trivy Image Report
-    #   uses: github/codeql-action/upload-sarif@v3
-    #   if: always()
-    #   with:
-    #     sarif_file: 'trivy-image.sarif'
-    #     category: trivy-image
+    - name: Upload Trivy Image Report
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-image.sarif'
+        category: trivy-image
 
-    # # Stage 7: OPTIMIZATION PHASE (Using Docker Slim)
-    # # Minifies the Docker image to reduce its size and attack surface
-    # - name: Minify Image using SlimToolkit
-    #   run: |
-    #     echo "Running SlimToolkit..."
-    #     docker run --rm \
-    #       -v /var/run/docker.sock:/var/run/docker.sock \
-    #       dslim/slim build \
-    #       --target fat-image:latest \
-    #       --tag slim-image:latest \
-    #       --http-probe=false \
-    #       --include-path /usr/share/nginx/html \
-    #       --include-path /etc/nginx \
-    #       --include-path /var/cache/nginx \
-    #       --include-path /var/log/nginx \
-    #       --include-path /var/run \
-    #       --include-path /etc/passwd \
-    #       --include-path /etc/group \
-    #       --include-bin /usr/sbin/nginx
+    # Stage 7: OPTIMIZATION PHASE (Using Docker Slim)
+    # Minifies the Docker image to reduce its size and attack surface
+    - name: Minify Image using SlimToolkit
+      run: |
+        echo "Running SlimToolkit..."
+        docker run --rm \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          dslim/slim build \
+          --target fat-image:latest \
+          --tag slim-image:latest \
+          --http-probe=false \
+          --include-path /usr/share/nginx/html \
+          --include-path /etc/nginx \
+          --include-path /var/cache/nginx \
+          --include-path /var/log/nginx \
+          --include-path /var/run \
+          --include-path /etc/passwd \
+          --include-path /etc/group \
+          --include-bin /usr/sbin/nginx
 
-    # #stage 8: DAST (Dynamic Application Security Testing - OWASP ZAP)
+    #stage 8: DAST (Dynamic Application Security Testing - OWASP ZAP)
 
-    # # Start container to DAST
-    # - name: Start Application Container
-    #   run: |
-    #     # MAP PORT 8080 (Host) -> 8080 (Container)
-    #     docker run -d -p 8080:8080 --name dast-container slim-image:latest
+    # Start container to DAST
+    - name: Start Application Container
+      run: |
+        # MAP PORT 8080 (Host) -> 8080 (Container)
+        docker run -d -p 8080:8080 --name dast-container slim-image:latest
 
-    # # Wait for the application to be ready
-    # - name: Wait for App to be Ready
-    #   run: |
-    #     echo "Waiting for application to start..."
-    #     timeout 60s bash -c 'until curl -s http://localhost:8080 > /dev/null; do sleep 2; done'
-    #     echo "Application is UP!"
+    # Wait for the application to be ready
+    - name: Wait for App to be Ready
+      run: |
+        echo "Waiting for application to start..."
+        timeout 60s bash -c 'until curl -s http://localhost:8080 > /dev/null; do sleep 2; done'
+        echo "Application is UP!"
 
-    # # To degug DAST issues, capture logs if the scan fails
-    # - name: Debug Container Logs (On Failure)
-    #   if: failure() # Only runs if the previous step failed
-    #   run: |
-    #     echo "=== CONTAINER LOGS ==="
-    #     docker logs dast-container
-    #     echo "=== CONTAINER INSPECT ==="
-    #     docker inspect dast-container
+    # To degug DAST issues, capture logs if the scan fails
+    - name: Debug Container Logs (On Failure)
+      if: failure() # Only runs if the previous step failed
+      run: |
+        echo "=== CONTAINER LOGS ==="
+        docker logs dast-container
+        echo "=== CONTAINER INSPECT ==="
+        docker inspect dast-container
 
-    # # DAST Scan with OWASP ZAP
-    # - name: DAST with OWASP ZAP
-    #   uses: zaproxy/action-full-scan@v0.13.0
-    #   with:
-    #     target: 'http://localhost:8080'
-    #     fail_action: false  # Do not fail the job on alerts
-    #     allow_issue_writing: false
+    # DAST Scan with OWASP ZAP
+    - name: DAST with OWASP ZAP
+      uses: zaproxy/action-full-scan@v0.13.0
+      with:
+        target: 'http://localhost:8080'
+        fail_action: false  # Do not fail the job on alerts
+        allow_issue_writing: false
 
-    # # Stop and remove the application container
-    # - name: Stop Application Container
-    #   if: always()
-    #   run: |
-    #     docker stop dast-container
-    #     docker rm dast-container
+    # Stop and remove the application container
+    - name: Stop Application Container
+      if: always()
+      run: |
+        docker stop dast-container
+        docker rm dast-container
 
-    # #stage 9: Configure AWS Credentials
-    # # Configures AWS credentials for subsequent AWS actions
-    # - name: Login to AWS ECR
-    #   uses: aws-actions/configure-aws-credentials@v4
-    #   with:
-    #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-    #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-    #     aws-region: ${{ env.aws_region }}
+    #stage 9: Configure AWS Credentials
+    # Configures AWS credentials for subsequent AWS actions
+    - name: Login to AWS ECR
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.aws_region }}
 
-    # #stage 10: Login to Amazon ECR
-    # # Logs in to Amazon ECR to enable pushing images
-    # - name: Login to Amazon ECR
-    #   id: login-ecr
-    #   uses: aws-actions/amazon-ecr-login@v2
+    #stage 10: Login to Amazon ECR
+    # Logs in to Amazon ECR to enable pushing images
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
 
-    # #stage 11: Push Phase
-    # # Pushes the optimized Docker image to Amazon ECR
-    # - name: Push Optimized Image to ECR
-    #   env:
-    #     ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-    #   run: |
-    #     echo "Retagging local slim image for ECR..."
+    #stage 11: Push Phase
+    # Pushes the optimized Docker image to Amazon ECR
+    - name: Push Optimized Image to ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+      run: |
+        echo "Retagging local slim image for ECR..."
           
-    #     # 1. Tag 'slim-image' with the ECR Format + SHA
-    #     docker tag slim-image:latest $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.IMAGE_TAG }}
+        # 1. Tag 'slim-image' with the ECR Format + SHA
+        docker tag slim-image:latest $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.IMAGE_TAG }}
         
-    #     # 2. Tag 'slim-image' with ECR Format + latest
-    #     docker tag slim-image:latest $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        # 2. Tag 'slim-image' with ECR Format + latest
+        docker tag slim-image:latest $ECR_REGISTRY/$ECR_REPOSITORY:latest
         
-    #     # 3. Push
-    #     docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.IMAGE_TAG }}
-    #     docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        # 3. Push
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.IMAGE_TAG }}
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
         
-    #     echo "::notice::🚀 Deployed Optimized Image: $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.IMAGE_TAG }}"
+        echo "::notice::🚀 Deployed Optimized Image: $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.IMAGE_TAG }}"
 
-    # # STAGE 12: CONTINUOUS DEPLOYMENT (ECS Fargate)
-    # # Deploys the new image to Amazon ECS Fargate
+    # STAGE 12: CONTINUOUS DEPLOYMENT (ECS Fargate)
+    # Deploys the new image to Amazon ECS Fargate
 
-    # # Download the current task definition
-    # - name: Download Task Definition
-    #   run: |
-    #     # Fetch the CURRENT Task Definition from AWS
-    #     aws ecs describe-task-definition --task-definition banking-app-task \
-    #     --query taskDefinition > task-definition.json
+    # Download the current task definition
+    - name: Download Task Definition
+      run: |
+        # Fetch the CURRENT Task Definition from AWS
+        aws ecs describe-task-definition --task-definition banking-app-task \
+        --query taskDefinition > task-definition.json
 
-    # # Fill in the new image ID in the task definition
-    # - name: Fill in the new image ID in the Amazon ECS task definition
-    #   id: task-def
-    #   uses: aws-actions/amazon-ecs-render-task-definition@v1
-    #   with:
-    #     task-definition: task-definition.json
-    #     container-name: ${{ env.CONTAINER_NAME }}
-    #     image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
-    # # Deploy the new task definition to the ECS service
-    # - name: Deploy Amazon ECS task definition
-    #   uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-    #   with:
-    #     task-definition: ${{ steps.task-def.outputs.task-definition }}
-    #     service: ${{ env.ECS_SERVICE }}
-    #     cluster: ${{ env.ECS_CLUSTER }}
-    #     wait-for-service-stability: true
+    # Fill in the new image ID in the task definition
+    - name: Fill in the new image ID in the Amazon ECS task definition
+      id: task-def
+      uses: aws-actions/amazon-ecs-render-task-definition@v1
+      with:
+        task-definition: task-definition.json
+        container-name: ${{ env.CONTAINER_NAME }}
+        image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+    # Deploy the new task definition to the ECS service
+    - name: Deploy Amazon ECS task definition
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      with:
+        task-definition: ${{ steps.task-def.outputs.task-definition }}
+        service: ${{ env.ECS_SERVICE }}
+        cluster: ${{ env.ECS_CLUSTER }}
+        wait-for-service-stability: true
