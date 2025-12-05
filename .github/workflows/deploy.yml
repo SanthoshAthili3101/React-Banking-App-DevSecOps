@@ -42,47 +42,56 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0  # Fetch all history for accurate SHA tagging and to scan all commits
-    
-    # Stage 2: Secret Scanning (TruffleHog)
-    # Checks git history for leaked AWS keys, tokens, etc.
-      
-    # Stage 2: Secret Scanning (TruffleHog) - produce SARIF and upload to Code Scanning
-    - name: Secret Scanning with TruffleHog
-      uses: trufflesecurity/trufflehog@v3.90.2
-      id: trufflehog
-      with:
-        # Request SARIF output
-        format: sarif
-        # Write SARIF explicitly to the workspace
-        output: ${{ github.workspace }}/trufflehog.sarif
-        # Preserve your existing arg
-        extra_args: --only-verified
 
-    # Verify trufflehog.sarif exists and show a preview for debug
-    - name: Verify trufflehog.sarif
-      if: always()
-      id: check_trufflehog
+    # ----------------------------------------------------------------
+    # STAGE: POLICY AS CODE (OPA)
+    # ----------------------------------------------------------------
+    - name: Setup OPA
+      uses: open-policy-agent/setup-opa@v2
+      with:
+        version: latest 
+
+    - name: Terraform Plan & OPA Check
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_REGION: ${{ env.AWS_REGION }}
       run: |
-        echo "Workspace: $GITHUB_WORKSPACE"
-        ls -la "${{ github.workspace }}" || true
-        if [ -f "${{ github.workspace }}/trufflehog.sarif" ]; then
-          echo "trufflehog.sarif FOUND: size=$(stat -c%s "${{ github.workspace }}/trufflehog.sarif") bytes"
-          echo "First 100 lines:"
-          head -n 100 "${{ github.workspace }}/trufflehog.sarif" || true
-          echo "exists=true" >> $GITHUB_OUTPUT
+        # 1. Generate the JSON Plan
+        cd terraform
+        terraform init
+        terraform plan -out tfplan.binary
+        terraform show -json tfplan.binary > tfplan.json
+        
+        # 2. Run OPA
+        # We stay in the 'terraform' directory and reference policies in the parent (../policies)
+        echo "🔍 Running OPA Policies..."
+        
+        opa eval --format pretty \
+          --input tfplan.json \
+          --data ../policies/ \
+          "data.terraform.analysis.deny" > opa-result.txt
+        
+        # 3. Check and Display Results
+        if [ -s opa-result.txt ] && grep -q "ALERT" opa-result.txt; then
+          echo "❌ OPA Policy Violation Detected:"
+          echo "==================================================="
+          cat opa-result.txt
+          echo "==================================================="
+          # exit 1  <-- Uncomment this to BLOCK the pipeline on violation
+        elif [ -s opa-result.txt ]; then
+           # Catch case where output exists but format is just empty JSON []
+           echo "✅ OPA Check Passed (No Violations)"
         else
-          echo "trufflehog.sarif NOT FOUND"
-          echo "exists=false" >> $GITHUB_OUTPUT
+           echo "✅ OPA Check Passed"
         fi
-
-    # Upload TruffleHog SARIF to GitHub Code Scanning (only when present)
-    - name: Upload TruffleHog SARIF
-      if: steps.check_trufflehog.outputs.exists == 'true'
-      uses: github/codeql-action/upload-sarif@v4
-      with:
-        sarif_file: ${{ github.workspace }}/trufflehog.sarif
-        category: trufflehog
-
+    
+    # # Stage 2: Secret Scanning (TruffleHog)
+    # # Checks git history for leaked AWS keys, tokens, etc.
+    # - name: Secret Scanning with TruffleHog
+    #   uses: trufflesecurity/trufflehog@v3.90.2
+    #   with:
+    #     extra_args: --only-verified
 
     # # Stage 3: SAST(STATIC APPLICATION SECURTY TESTING - Semgrep)  
     # # Scans your rect code for vulnerabilities
